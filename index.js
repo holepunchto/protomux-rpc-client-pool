@@ -3,6 +3,7 @@ const b4a = require('b4a')
 
 class ProtomuxRpcClientPool {
   constructor (keys, rpcClient, { nrRetries = 3, requestTimeout = 3000 } = {}) {
+    // TODO: ensure failover is to a random key too (for example by random-sorting the keys when passed-in)
     this.keys = keys.map(IdEnc.decode)
     this.statelessRpc = rpcClient
     this.nrRetries = nrRetries
