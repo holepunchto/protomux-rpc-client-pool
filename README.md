@@ -1,4 +1,4 @@
-# Keet Registry Client Pool
+# Protomux RPC Client Pool
 
 Reliably connect to one of a pool of protomux-rpc servers.
 

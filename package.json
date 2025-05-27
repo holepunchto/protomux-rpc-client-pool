@@ -1,5 +1,5 @@
 {
-  "name": "keet-registry-client-pool",
+  "name": "protomux-rpc-client-pool",
   "version": "0.0.0",
   "description": "Reliably connect to one of a pool of protomux-rpc servers",
   "main": "index.js",
@@ -8,7 +8,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/holepunchto/keet-registry-client-pool.git"
+    "url": "git+https://github.com/holepunchto/protomux-rpc-client-pool.git"
   },
   "keywords": [
     "protomux",
@@ -18,9 +18,9 @@
   "author": "Holepunch",
   "license": "Apache-2.0",
   "bugs": {
-    "url": "https://github.com/holepunchto/keet-registry-client-pool/issues"
+    "url": "https://github.com/holepunchto/protomux-rpc-client-pool/issues"
   },
-  "homepage": "https://github.com/holepunchto/keet-registry-client-pool#readme",
+  "homepage": "https://github.com/holepunchto/protomux-rpc-client-pool#readme",
   "devDependencies": {
     "standard": "^17.1.2"
   }
