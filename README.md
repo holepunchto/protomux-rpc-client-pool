@@ -22,9 +22,11 @@ Create a new pool. `keys` is a list of [HyperDHT](https://github.com/holepunchto
 
 #### await pool.makeRequest(methodName, args, opts)
 
-Makes a request for the specifed `methodName` to one of the servers in the pool, passing the `args`. If the server fails to respond, it automatically retries with another server.
+Makes a request for the specifed `methodName` to one of the servers in the pool, passing the `args`. If the server fails to respond, it automatically retries with other servers.
+
+Throws a `ProtomuxRpcClientPoolError.TOO_MANY_RETRIES` error if the request attempt fails `pool.retries` times.
 
 `opts` include:
 - `requestEncoding` the request encoding of the RPC service
 - `responseEncoding` the response encoding of the RPC service
-- `timeout` the timeout to use for each request attempts(in ms). Defaults to `pool.timeout`.
+- `timeout` the timeout to use for each request attempt (in ms). Defaults to `pool.timeout`.
