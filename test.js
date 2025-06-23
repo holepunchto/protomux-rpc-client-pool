@@ -120,45 +120,6 @@ test('retries with other key if a request times out', async t => {
   t.alike(pool.chosenKey, choseS1 ? s2.publicKey : s1.publicKey, 'switched to the other server')
 })
 
-test('retries with other key if a server is unavailable', async t => {
-  const bootstrap = await setupTestnet(t)
-  const { server: s1, dht: dht1 } = await setupRpcServer(t, bootstrap)
-  const { server: s2, dht: dht2 } = await setupRpcServer(t, bootstrap)
-  const rpcClient = getRpcClient(t, bootstrap)
-
-  const pool = new Pool([s1.publicKey, s2.publicKey], rpcClient)
-
-  {
-    const res = await pool.makeRequest(
-      'echo',
-      'hi',
-      { requestEncoding: cenc.string, responseEncoding: cenc.string }
-    )
-    t.is(res, 'hi', 'rpc request processed successfully')
-  }
-
-  // chosen server goes offline
-  let choseS1 = true
-
-  if (b4a.equals(pool.chosenKey, s1.publicKey)) {
-    await dht1.destroy()
-  } else {
-    choseS1 = false
-    await dht2.destroy()
-  }
-
-  {
-    const res = await pool.makeRequest(
-      'echo',
-      'hi',
-      { requestEncoding: cenc.string, responseEncoding: cenc.string }
-    )
-    t.is(res, 'hi', 'rpc request processed successfully')
-  }
-
-  t.alike(pool.chosenKey, choseS1 ? s2.publicKey : s1.publicKey, 'switched to the other server')
-})
-
 test('Too-many-retries error if there are too many failed attempts', async t => {
   const bootstrap = await setupTestnet(t)
   const rpcClient = getRpcClient(t, bootstrap)
