@@ -27,7 +27,6 @@
   },
   "homepage": "https://github.com/holepunchto/protomux-rpc-client-pool#readme",
   "devDependencies": {
-    "b4a": "^1.6.7",
     "brittle": "^3.16.3",
     "compact-encoding": "^2.16.1",
     "hyperdht": "^6.20.5",
@@ -36,6 +35,7 @@
     "standard": "^17.1.2"
   },
   "dependencies": {
+    "b4a": "^1.6.7",
     "hypercore-id-encoding": "^1.3.0"
   }
 }
