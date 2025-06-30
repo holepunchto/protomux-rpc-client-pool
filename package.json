@@ -32,7 +32,7 @@
     "compact-encoding": "^2.16.1",
     "hyperdht": "^6.20.5",
     "protomux-rpc": "^1.7.1",
-    "protomux-rpc-client": "holepunchto/protomux-rpc-client#v2",
+    "protomux-rpc-client": "^2.0.0",
     "standard": "^17.1.2"
   },
   "dependencies": {
