@@ -20,7 +20,7 @@ Create a new pool. `keys` is a list of [HyperDHT](https://github.com/holepunchto
 - `retries` : the number of times to retry a request with a different server before giving up. Default: 3.
 - `timeout` : the default timeout for a single request attempt, in ms. Note that the maximal total time for a `pool.request(...)` call is roughly `retries * timeout`.
 
-#### await pool.makeRequest(methodName, args, opts)
+#### `await pool.makeRequest(methodName, args, opts)`
 
 Makes a request for the specifed `methodName` to one of the servers in the pool, passing the `args`. If the server fails to respond, it automatically retries with other servers.
 
