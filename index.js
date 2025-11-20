@@ -26,7 +26,7 @@ class ProtomuxRpcClientPool {
         )
       } catch (e) {
         // TODO: figure out other errors that should result in a retry
-        if (e.code === 'REQUEST_TIMEOUT' || e.code === 'CHANNEL_CLOSED') {
+        if (e.code === 'REQUEST_TIMEOUT' || e.code === 'CHANNEL_CLOSED' || e.code === 'TIMEOUT_EXCEEDED') {
           if (b4a.equals(key, this.chosenKey)) {
             this.chosenKey = key = pickNext(this.keys, key)
           } else { // Some other request already rotated the key
