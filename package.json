@@ -4,7 +4,9 @@
   "description": "Reliably connect to one of a pool of protomux-rpc servers",
   "main": "index.js",
   "scripts": {
-    "test": "standard && brittle test.js"
+    "format": "prettier --write .",
+    "lint": "prettier --check .",
+    "test": "npm run lint && brittle test.js"
   },
   "files": [
     "index.js",
@@ -29,9 +31,10 @@
     "brittle": "^3.16.3",
     "compact-encoding": "^2.16.1",
     "hyperdht": "^6.20.5",
+    "prettier": "^3.7.4",
+    "prettier-config-holepunch": "^2.0.0",
     "protomux-rpc": "^1.7.1",
-    "protomux-rpc-client": "^2.0.0",
-    "standard": "^17.1.2"
+    "protomux-rpc-client": "^2.0.0"
   },
   "dependencies": {
     "b4a": "^1.6.7",
