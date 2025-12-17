@@ -20,12 +20,17 @@ Create a new pool. `keys` is a list of [HyperDHT](https://github.com/holepunchto
 
 - `retries` : the number of times to retry a request with a different server before giving up. Default: 3.
 - `timeout` : the default timeout for a single request attempt, in ms. Note that the maximal total time for a `pool.request(...)` call is roughly `retries * timeout`.
+- `rateLimit`: bucket rate limit config
+- `ratelimit.capacity`: max tokens (burst capacity)
+- `ratelimit.intervalMs`: time interval in milliseconds to refill 1 token
+- `ratelimit.timeout`: timeout waiting for rate limit to refill
 
 #### `await pool.makeRequest(methodName, args, opts)`
 
 Makes a request for the specifed `methodName` to one of the servers in the pool, passing the `args`. If the server fails to respond, it automatically retries with other servers.
 
 Throws a `ProtomuxRpcClientPoolError.TOO_MANY_RETRIES` error if the request attempt fails `pool.retries` times.
+Throws a `ProtomuxRpcClientPoolError.RATE_LIMIT_EXCEEDED` error if the request exceeds the rate limit.
 
 `opts` include:
 

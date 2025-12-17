@@ -1,18 +1,31 @@
 const IdEnc = require('hypercore-id-encoding')
 const b4a = require('b4a')
+const BucketRateLimiter = require('bucket-rate-limit')
+const safetyCatch = require('safety-catch')
 const PoolError = require('./lib/errors')
 
 class ProtomuxRpcClientPool {
-  constructor(keys, rpcClient, { retries = 3, timeout = 3000 } = {}) {
+  constructor(keys, rpcClient, { retries = 3, timeout = 3000, rateLimit = {} } = {}) {
     // TODO: ensure failover is to a random key too (for example by random-sorting the keys when passed-in)
     this.keys = keys.map(IdEnc.decode)
     this.statelessRpc = rpcClient
     this.retries = retries
     this.timeout = timeout
     this.chosenKey = pickRandom(this.keys)
+    this.rateLimit = new BucketRateLimiter(rateLimit.capacity || 50, rateLimit.intervalMs || 200)
+    this.rateLimitTimeout = rateLimit.timeout || 3_000
   }
 
   async makeRequest(methodName, args, { requestEncoding, responseEncoding, timeout } = {}) {
+    const timeoutPromise = new Promise((resolve, reject) => {
+      setTimeout(() => {
+        reject(PoolError.RATE_LIMIT_EXCEEDED())
+      }, this.rateLimitTimeout)
+    })
+    timeoutPromise.catch(safetyCatch)
+
+    await this.rateLimit.wait({ abort: timeoutPromise })
+
     timeout = timeout || this.timeout
 
     let key = this.chosenKey
@@ -43,6 +56,10 @@ class ProtomuxRpcClientPool {
     }
 
     throw PoolError.TOO_MANY_RETRIES()
+  }
+
+  destroy() {
+    this.rateLimit.destroy()
   }
 }
 
