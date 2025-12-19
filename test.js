@@ -17,8 +17,14 @@ test('happy path', async (t) => {
   const rpcClient = getRpcClient(t, bootstrap)
 
   const pool = new Pool([s1.publicKey, s2.publicKey], rpcClient)
+  t.teardown(() => {
+    pool.destroy()
+  })
   t.is(pool.retries, 3, 'default retries')
   t.is(pool.timeout, 3000, 'default timeout')
+  t.is(pool.rateLimit.capacity, 50, 'default rate limit capacity')
+  t.is(pool.rateLimit.intervalMs, 200, 'default rate limit interval')
+  t.is(pool.rateLimitTimeout, 3000, 'default rate limit timeout')
 
   const res = await pool.makeRequest('echo', 'hi', {
     requestEncoding: cenc.string,
@@ -47,6 +53,9 @@ test('retries with other key if a server is unavailable', async (t) => {
   const rpcClient = getRpcClient(t, bootstrap)
 
   const pool = new Pool([s1.publicKey, s2.publicKey], rpcClient)
+  t.teardown(() => {
+    pool.destroy()
+  })
 
   {
     const res = await pool.makeRequest('echo', 'hi', {
@@ -85,6 +94,9 @@ test('retries with other key if a request times out', async (t) => {
   const rpcClient = getRpcClient(t, bootstrap)
 
   const pool = new Pool([s1.publicKey, s2.publicKey], rpcClient, { timeout: 500 })
+  t.teardown(() => {
+    pool.destroy()
+  })
 
   {
     const res = await pool.makeRequest('echo', 'hi', {
@@ -123,10 +135,70 @@ test('Too-many-retries error if there are too many failed attempts', async (t) =
     rpcClient,
     { timeout: 100 }
   )
+  t.teardown(() => {
+    pool.destroy()
+  })
 
   await t.exception(async () => {
     await pool.makeRequest('echo', 'hi')
   }, 'TOO_MANY_RETRIES:')
+})
+
+test('Too-many-retries error if there are too many failed attempts', async (t) => {
+  const bootstrap = await setupTestnet(t)
+  const rpcClient = getRpcClient(t, bootstrap)
+
+  const pool = new Pool(
+    ['a'.repeat(64), 'b'.repeat(64), 'c'.repeat(64), 'd'.repeat(64)],
+    rpcClient,
+    { timeout: 100 }
+  )
+  t.teardown(() => {
+    pool.destroy()
+  })
+
+  await t.exception(async () => {
+    await pool.makeRequest('echo', 'hi')
+  }, 'TOO_MANY_RETRIES:')
+})
+
+test('Rate limit exceeded error if the rate limit is exceeded', async (t) => {
+  const bootstrap = await setupTestnet(t)
+  const { server: s1 } = await setupRpcServer(t, bootstrap)
+  const { server: s2 } = await setupRpcServer(t, bootstrap)
+  const rpcClient = getRpcClient(t, bootstrap)
+
+  const pool = new Pool([s1.publicKey, s2.publicKey], rpcClient, {
+    rateLimit: { capacity: 2, intervalMs: 200 }
+  })
+  t.teardown(() => {
+    pool.destroy()
+  })
+
+  let requestFinishedCount = 0
+
+  new Array(5).fill(0).map(async () => {
+    const res = await pool.makeRequest('echo', 'hi', {
+      requestEncoding: cenc.string,
+      responseEncoding: cenc.string
+    })
+    t.is(res, 'hi', 'rpc request processed successfully')
+    requestFinishedCount++
+  })
+
+  // With capacity=2 and tokensPerInterval=1 every 200ms
+  // expect 2 to finish quickly, then one more approximately every 200ms.
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  t.is(requestFinishedCount, 2, 'burst capacity executed immediately')
+
+  await new Promise((resolve) => setTimeout(resolve, 200)) // ~250ms since start
+  t.is(requestFinishedCount, 3, 'one additional request after first refill')
+
+  await new Promise((resolve) => setTimeout(resolve, 200)) // ~450ms since start
+  t.is(requestFinishedCount, 4, 'one additional request after second refill')
+
+  await new Promise((resolve) => setTimeout(resolve, 200)) // ~650ms since start
+  t.is(requestFinishedCount, 5, 'all requests finished within rate limit')
 })
 
 async function setupTestnet(t) {
