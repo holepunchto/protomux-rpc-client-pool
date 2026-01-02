@@ -1,48 +1,87 @@
 const IdEnc = require('hypercore-id-encoding')
 const b4a = require('b4a')
+const BucketRateLimiter = require('bucket-rate-limit')
+const safetyCatch = require('safety-catch')
 const PoolError = require('./lib/errors')
 
 class ProtomuxRpcClientPool {
-  constructor(keys, rpcClient, { retries = 3, timeout = 3000 } = {}) {
+  constructor(
+    keys,
+    rpcClient,
+    { totalTimeout = 10_000, retries = 3, rpcTimeout = 3_000, rateLimit = {} } = {}
+  ) {
     // TODO: ensure failover is to a random key too (for example by random-sorting the keys when passed-in)
     this.keys = keys.map(IdEnc.decode)
     this.statelessRpc = rpcClient
+    this.totalTimeout = totalTimeout
     this.retries = retries
-    this.timeout = timeout
+    this.rpcTimeout = rpcTimeout
     this.chosenKey = pickRandom(this.keys)
+    this.rateLimit = new BucketRateLimiter(rateLimit.capacity || 50, rateLimit.intervalMs || 200)
   }
 
-  async makeRequest(methodName, args, { requestEncoding, responseEncoding, timeout } = {}) {
-    timeout = timeout || this.timeout
+  async makeRequest(
+    methodName,
+    args,
+    { requestEncoding, responseEncoding, rpcTimeout, totalTimeout } = {}
+  ) {
+    totalTimeout = totalTimeout || this.totalTimeout
+    rpcTimeout = rpcTimeout || this.rpcTimeout
 
-    let key = this.chosenKey
-    for (let i = 0; i < this.retries; i++) {
-      try {
-        return await this.statelessRpc.makeRequest(key, methodName, args, {
-          timeout,
-          requestEncoding,
-          responseEncoding
-        })
-      } catch (e) {
-        // TODO: figure out other errors that should result in a retry
-        if (
-          e.code === 'REQUEST_TIMEOUT' ||
-          e.code === 'CHANNEL_CLOSED' ||
-          e.code === 'TIMEOUT_EXCEEDED'
-        ) {
-          if (b4a.equals(key, this.chosenKey)) {
-            this.chosenKey = key = pickNext(this.keys, key)
-          } else {
-            // Some other request already rotated the key
-            key = this.chosenKey
+    let timer = null
+
+    const totalTimeoutAbort = new Promise((resolve, reject) => {
+      timer = setTimeout(() => {
+        timer = null
+        reject(PoolError.POOL_REQUEST_TIMEOUT())
+      }, totalTimeout)
+    })
+    totalTimeoutAbort.catch(safetyCatch)
+
+    try {
+      await this.rateLimit.wait({ abort: totalTimeoutAbort })
+
+      let key = this.chosenKey
+
+      for (let i = 0; i < this.retries; i++) {
+        try {
+          return await Promise.race([
+            totalTimeoutAbort,
+            this.statelessRpc.makeRequest(key, methodName, args, {
+              timeout: rpcTimeout,
+              requestEncoding,
+              responseEncoding
+            })
+          ])
+        } catch (e) {
+          // TODO: figure out other errors that should result in a retry
+          if (
+            e.code === 'REQUEST_TIMEOUT' ||
+            e.code === 'CHANNEL_CLOSED' ||
+            e.code === 'TIMEOUT_EXCEEDED'
+          ) {
+            if (b4a.equals(key, this.chosenKey)) {
+              this.chosenKey = key = pickNext(this.keys, key)
+            } else {
+              // Some other request already rotated the key
+              key = this.chosenKey
+            }
+            continue
           }
-          continue
+          throw e
         }
-        throw e
+      }
+
+      throw PoolError.TOO_MANY_RETRIES()
+    } finally {
+      if (timer) {
+        clearTimeout(timer)
       }
     }
+  }
 
-    throw PoolError.TOO_MANY_RETRIES()
+  destroy() {
+    this.rateLimit.destroy()
   }
 }
 
