@@ -19,16 +19,26 @@ Create a new pool. `keys` is a list of [HyperDHT](https://github.com/holepunchto
 `opts` include:
 
 - `retries` : the number of times to retry a request with a different server before giving up. Default: 3.
-- `timeout` : the default timeout for a single request attempt, in ms. Note that the maximal total time for a `pool.request(...)` call is roughly `retries * timeout`.
+- `rpcTimeout` : the default timeout for a single request attempt, in ms.
+- `totalTimeout`: the default timeout for the entire request, in ms. This timeout operates independently of `rpcTimeout`.
+- `rateLimit`: bucket rate limit config
+- `ratelimit.capacity`: max tokens (burst capacity)
+- `ratelimit.intervalMs`: time interval in milliseconds to refill 1 token
 
 #### `await pool.makeRequest(methodName, args, opts)`
 
 Makes a request for the specifed `methodName` to one of the servers in the pool, passing the `args`. If the server fails to respond, it automatically retries with other servers.
 
 Throws a `ProtomuxRpcClientPoolError.TOO_MANY_RETRIES` error if the request attempt fails `pool.retries` times.
+Throws a `ProtomuxRpcClientPoolError.POOL_REQUEST_TIMEOUT` error if the request exceeds total timeout.
 
 `opts` include:
 
 - `requestEncoding` the request encoding of the RPC service
 - `responseEncoding` the response encoding of the RPC service
-- `timeout` the timeout to use for each request attempt (in ms). Defaults to `pool.timeout`.
+- `rpcTimeout` the timeout to use for each request attempt (in ms). Defaults to `pool.rpcTimeout`.
+- `totalTimeout` the timeout for entire request (in ms). Defaults to `pool.totalTimeout`.
+
+#### `pool.destroy()`
+
+Destroy the pool, cleanup the ratelimit
