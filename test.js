@@ -221,6 +221,33 @@ test('Rate limit exceeded error if the rate limit is exceeded', async (t) => {
   t.is(requestFinishedCount, 5, 'all requests finished within rate limit')
 })
 
+test('No rate limit if capacity set to -1', async (t) => {
+  const bootstrap = await setupTestnet(t)
+  const { server: s1 } = await setupRpcServer(t, bootstrap)
+  const rpcClient = getRpcClient(t, bootstrap)
+
+  const pool = new Pool([s1.publicKey], rpcClient, {
+    rateLimit: { capacity: -1 }
+  })
+  t.teardown(() => {
+    pool.destroy()
+  })
+  t.is(pool.rateLimit, null, 'rate limit not set up')
+
+  let requestFinishedCount = 0
+
+  new Array(10).fill(0).map(async () => {
+    await pool.makeRequest('echo', 'hi', {
+      requestEncoding: cenc.string,
+      responseEncoding: cenc.string
+    })
+    requestFinishedCount++
+  })
+
+  await new Promise((resolve) => setTimeout(resolve, 100))
+  t.is(requestFinishedCount, 10, 'no rate limit triggered')
+})
+
 async function setupTestnet(t) {
   const testnet = await createTestnet()
   t.teardown(

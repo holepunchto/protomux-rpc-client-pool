@@ -17,7 +17,10 @@ class ProtomuxRpcClientPool {
     this.retries = retries
     this.rpcTimeout = rpcTimeout
     this.chosenKey = pickRandom(this.keys)
-    this.rateLimit = new BucketRateLimiter(rateLimit.capacity || 50, rateLimit.intervalMs || 200)
+    this.rateLimit =
+      rateLimit.capacity === -1
+        ? null
+        : new BucketRateLimiter(rateLimit.capacity || 50, rateLimit.intervalMs || 200)
   }
 
   async makeRequest(
@@ -39,7 +42,7 @@ class ProtomuxRpcClientPool {
     totalTimeoutAbort.catch(safetyCatch)
 
     try {
-      await this.rateLimit.wait({ abort: totalTimeoutAbort })
+      if (this.rateLimit) await this.rateLimit.wait({ abort: totalTimeoutAbort })
 
       let key = this.chosenKey
 
@@ -81,7 +84,7 @@ class ProtomuxRpcClientPool {
   }
 
   destroy() {
-    this.rateLimit.destroy()
+    if (this.rateLimit) this.rateLimit.destroy()
   }
 }
 
