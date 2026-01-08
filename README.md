@@ -22,7 +22,7 @@ Create a new pool. `keys` is a list of [HyperDHT](https://github.com/holepunchto
 - `rpcTimeout` : the default timeout for a single request attempt, in ms.
 - `totalTimeout`: the default timeout for the entire request, in ms. This timeout operates independently of `rpcTimeout`.
 - `rateLimit`: bucket rate limit config
-- `ratelimit.capacity`: max tokens (burst capacity)
+- `ratelimit.capacity`: max tokens (burst capacity). Set to `-1` to disable the rate limit.
 - `ratelimit.intervalMs`: time interval in milliseconds to refill 1 token
 
 #### `await pool.makeRequest(methodName, args, opts)`
