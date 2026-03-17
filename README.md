@@ -39,6 +39,14 @@ Throws a `ProtomuxRpcClientPoolError.POOL_REQUEST_TIMEOUT` error if the request 
 - `rpcTimeout` the timeout to use for each request attempt (in ms). Defaults to `pool.rpcTimeout`.
 - `totalTimeout` the timeout for entire request (in ms). Defaults to `pool.totalTimeout`.
 
+#### `pool.event(methodName, args, opts)`
+
+Creates a fire-and-forget event call to the currently selected server in the pool. The `methodName` and `args` parameters follow the same contract as `pool.makeRequest(...)`.
+
+`opts` include:
+
+- `requestEncoding` the request encoding of the RPC service
+
 #### `pool.destroy()`
 
 Destroy the pool, cleanup the ratelimit

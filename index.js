@@ -83,6 +83,31 @@ class ProtomuxRpcClientPool {
     }
   }
 
+  event(methodName, args, { requestEncoding } = {}) {
+    this._event(methodName, args, { requestEncoding }).catch(safetyCatch)
+  }
+
+  async _event(methodName, args, { requestEncoding } = {}) {
+    let timer = null
+    const totalTimeoutAbort = new Promise((resolve, reject) => {
+      timer = setTimeout(() => {
+        timer = null
+        reject(PoolError.POOL_REQUEST_TIMEOUT())
+      }, this.totalTimeout)
+      timer.unref()
+    })
+    totalTimeoutAbort.catch(safetyCatch)
+
+    if (this.rateLimit) await this.rateLimit.wait({ abort: totalTimeoutAbort })
+    if (timer) {
+      clearTimeout(timer)
+    }
+
+    this.statelessRpc.event(this.chosenKey, methodName, args, {
+      requestEncoding
+    })
+  }
+
   destroy() {
     if (this.rateLimit) this.rateLimit.destroy()
   }
