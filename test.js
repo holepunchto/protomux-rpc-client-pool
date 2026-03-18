@@ -248,6 +248,97 @@ test('No rate limit if capacity set to -1', async (t) => {
   t.is(requestFinishedCount, 10, 'no rate limit triggered')
 })
 
+test('event sends a fire-and-forget message', async (t) => {
+  t.plan(1)
+  const bootstrap = await setupTestnet(t)
+  const serverDht = new HyperDHT({ bootstrap })
+  const server = serverDht.createServer()
+  server.on('connection', (conn) => {
+    const rpc = new ProtomuxRPC(conn, {
+      id: server.publicKey,
+      valueEncoding: cenc.none
+    })
+
+    rpc.respond('greet', { requestEncoding: cenc.string }, (req) => {
+      t.is(req, 'hi')
+    })
+  })
+  await server.listen()
+  t.teardown(async () => {
+    await serverDht.destroy()
+  })
+  const rpcClient = getRpcClient(t, bootstrap)
+
+  const pool = new Pool([server.publicKey], rpcClient)
+  t.teardown(() => {
+    pool.destroy()
+  })
+
+  pool.event('greet', 'hi', { requestEncoding: cenc.string })
+})
+
+test('event & makeRequest share rate limit', async (t) => {
+  const bootstrap = await setupTestnet(t)
+  const serverDht = new HyperDHT({ bootstrap })
+  const server = serverDht.createServer()
+
+  let echoCount = 0
+  let greetCount = 0
+  server.on('connection', (conn) => {
+    const rpc = new ProtomuxRPC(conn, {
+      id: server.publicKey,
+      valueEncoding: cenc.none
+    })
+
+    rpc.respond('echo', { requestEncoding: cenc.string, responseEncoding: cenc.string }, (req) => {
+      echoCount++
+      return req
+    })
+
+    rpc.respond('greet', { requestEncoding: cenc.string }, (req) => {
+      greetCount++
+    })
+  })
+  await server.listen()
+  t.teardown(async () => {
+    await serverDht.destroy()
+  })
+  const rpcClient = getRpcClient(t, bootstrap)
+
+  const pool = new Pool([server.publicKey], rpcClient, {
+    rateLimit: { capacity: 2, intervalMs: 200 }
+  })
+  t.teardown(() => {
+    pool.destroy()
+  })
+
+  pool.event('greet', 'hi', { requestEncoding: cenc.string })
+
+  new Array(2).fill(0).map(async () => {
+    await pool.makeRequest('echo', 'hi', {
+      requestEncoding: cenc.string,
+      responseEncoding: cenc.string
+    })
+  })
+  new Array(2).fill(0).map(() => {
+    pool.event('greet', 'hi', {
+      requestEncoding: cenc.string
+    })
+  })
+
+  // With capacity=2 and tokensPerInterval=1 every 200ms
+  // expect 2 to finish quickly, then one more approximately every 200ms.
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  t.is(echoCount + greetCount, 2, 'burst capacity executed immediately')
+
+  await new Promise((resolve) => setTimeout(resolve, 200)) // ~250ms since start
+  t.is(echoCount + greetCount, 3, 'one additional request after first refill')
+
+  await new Promise((resolve) => setTimeout(resolve, 200)) // ~450ms since start
+  t.is(echoCount, 2, 'one additional request after second refill')
+  t.is(greetCount, 2, 'one additional request after second refill')
+})
+
 async function setupTestnet(t) {
   const testnet = await createTestnet()
   t.teardown(

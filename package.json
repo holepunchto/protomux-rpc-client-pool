@@ -34,7 +34,7 @@
     "prettier": "^3.7.4",
     "prettier-config-holepunch": "^2.0.0",
     "protomux-rpc": "^1.7.1",
-    "protomux-rpc-client": "^2.0.0"
+    "protomux-rpc-client": "^2.3.0"
   },
   "dependencies": {
     "b4a": "^1.6.7",
