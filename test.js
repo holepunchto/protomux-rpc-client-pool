@@ -5,6 +5,8 @@ const createTestnet = require('hyperdht/testnet')
 const cenc = require('compact-encoding')
 const ProtomuxRpcClient = require('protomux-rpc-client')
 const b4a = require('b4a')
+const IdEnc = require('hypercore-id-encoding')
+const promClient = require('bare-prom-client')
 
 const Pool = require('.')
 
@@ -337,6 +339,81 @@ test('event & makeRequest share rate limit', async (t) => {
   await new Promise((resolve) => setTimeout(resolve, 200)) // ~450ms since start
   t.is(echoCount, 2, 'one additional request after second refill')
   t.is(greetCount, 2, 'one additional request after second refill')
+})
+
+test('prometheus metrics', async (t) => {
+  const bootstrap = await setupTestnet(t)
+  const { server: s1, setDelay: setDelay1 } = await setupRpcServer(t, bootstrap)
+  const { server: s2, setDelay: setDelay2 } = await setupRpcServer(t, bootstrap)
+  const rpcClient = getRpcClient(t, bootstrap)
+  const pool = new Pool([s1.publicKey, s2.publicKey], rpcClient, {
+    rpcTimeout: 100,
+    totalTimeout: 1000
+  })
+  t.teardown(() => {
+    pool.destroy()
+    promClient.register.clear()
+  })
+  pool.registerMetrics(promClient, { prefix: 'my_service_' })
+
+  {
+    const metrics = await promClient.register.metrics()
+    t.ok(
+      metrics.includes('my_service_make_request_attempted 0'),
+      'initial makeRequest attempts included'
+    )
+    t.ok(
+      metrics.includes('my_service_make_request_succeed 0'),
+      'initial successful makeRequests included'
+    )
+  }
+
+  const firstServerKey = IdEnc.normalize(pool.chosenKey)
+  if (b4a.equals(pool.chosenKey, s1.publicKey)) setDelay1(100_000)
+  else setDelay2(100_000)
+
+  t.is(
+    await pool.makeRequest('echo', 'hi', {
+      requestEncoding: cenc.string,
+      responseEncoding: cenc.string
+    }),
+    'hi',
+    'request succeeds after retrying another server'
+  )
+
+  const secondServerKey = IdEnc.normalize(pool.chosenKey)
+  await t.exception(() => pool.makeRequest('unknown', null), /UNKNOWN_METHOD/)
+
+  const metrics = await promClient.register.metrics()
+  t.ok(metrics.includes('my_service_make_request_attempted 2'), 'makeRequest attempts included')
+  t.ok(metrics.includes('my_service_make_request_succeed 1'), 'successful makeRequest included')
+  t.ok(
+    metrics.includes('my_service_make_request_failed{code="UNKNOWN_METHOD"} 1'),
+    'failed makeRequest includes code'
+  )
+  t.ok(
+    metrics.includes(`my_service_try_attempted{try="0",serverKey="${firstServerKey}"} 1`),
+    'first try includes server key'
+  )
+  t.ok(
+    // The client and RPC layers enforce the same timeout; either timer may fire first.
+    ['REQUEST_TIMEOUT', 'TIMEOUT_EXCEEDED'].some((code) =>
+      metrics.includes(
+        `my_service_try_failed{try="0",serverKey="${firstServerKey}",code="${code}"} 1`
+      )
+    ),
+    'failed first try includes server key and code'
+  )
+  t.ok(
+    metrics.includes(`my_service_try_succeeded{try="1",serverKey="${secondServerKey}"} 1`),
+    'successful retry includes server key'
+  )
+  t.ok(
+    metrics.includes(
+      `my_service_try_failed{try="0",serverKey="${secondServerKey}",code="UNKNOWN_METHOD"} 1`
+    ),
+    'non-retryable failure includes server key and code'
+  )
 })
 
 async function setupTestnet(t) {

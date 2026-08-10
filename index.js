@@ -21,6 +21,14 @@ class ProtomuxRpcClientPool {
       rateLimit.capacity === -1
         ? null
         : new BucketRateLimiter(rateLimit.capacity || 50, rateLimit.intervalMs || 200)
+    this.stats = {
+      makeRequestAttempted: 0,
+      makeRequestFailed: {},
+      makeRequestSucceed: 0,
+      tryAttempted: {},
+      tryFailed: {},
+      trySucceeded: {}
+    }
   }
 
   async makeRequest(
@@ -28,6 +36,8 @@ class ProtomuxRpcClientPool {
     args,
     { requestEncoding, responseEncoding, rpcTimeout, totalTimeout } = {}
   ) {
+    this.stats.makeRequestAttempted++
+
     totalTimeout = totalTimeout || this.totalTimeout
     rpcTimeout = rpcTimeout || this.rpcTimeout
 
@@ -47,8 +57,11 @@ class ProtomuxRpcClientPool {
       let key = this.chosenKey
 
       for (let i = 0; i < this.retries; i++) {
+        const serverKey = IdEnc.normalize(key)
+        increment(this.stats.tryAttempted, [i, serverKey])
+
         try {
-          return await Promise.race([
+          const result = await Promise.race([
             totalTimeoutAbort,
             this.statelessRpc.makeRequest(key, methodName, args, {
               timeout: rpcTimeout,
@@ -56,7 +69,13 @@ class ProtomuxRpcClientPool {
               responseEncoding
             })
           ])
+
+          increment(this.stats.trySucceeded, [i, serverKey])
+          this.stats.makeRequestSucceed++
+          return result
         } catch (e) {
+          increment(this.stats.tryFailed, [i, serverKey, e.code ? e.code : 'UNKNOWN'])
+
           // TODO: figure out other errors that should result in a retry
           if (
             e.code === 'REQUEST_TIMEOUT' ||
@@ -76,6 +95,9 @@ class ProtomuxRpcClientPool {
       }
 
       throw PoolError.TOO_MANY_RETRIES()
+    } catch (e) {
+      increment(this.stats.makeRequestFailed, [e.code ? e.code : 'UNKNOWN'])
+      throw e
     } finally {
       if (timer) {
         clearTimeout(timer)
@@ -111,6 +133,79 @@ class ProtomuxRpcClientPool {
   destroy() {
     if (this.rateLimit) this.rateLimit.destroy()
   }
+
+  registerMetrics(promClient, { prefix = 'protomux_rpc_client_pool_' } = {}) {
+    const self = this
+
+    new promClient.Gauge({
+      name: `${prefix}make_request_attempted`,
+      help: 'The total number of makeRequest calls attempted',
+      collect() {
+        this.set(self.stats.makeRequestAttempted)
+      }
+    })
+
+    new promClient.Gauge({
+      name: `${prefix}make_request_failed`,
+      help: 'The total number of failed makeRequest calls',
+      labelNames: ['code'],
+      collect() {
+        for (const [key, count] of Object.entries(self.stats.makeRequestFailed)) {
+          const [code] = key.split('\0')
+          this.set({ code }, count)
+        }
+      }
+    })
+
+    new promClient.Gauge({
+      name: `${prefix}make_request_succeed`,
+      help: 'The total number of successful makeRequest calls',
+      collect() {
+        this.set(self.stats.makeRequestSucceed)
+      }
+    })
+
+    new promClient.Gauge({
+      name: `${prefix}try_attempted`,
+      help: 'The total number of individual request tries attempted',
+      labelNames: ['try', 'serverKey'],
+      collect() {
+        for (const [key, count] of Object.entries(self.stats.tryAttempted)) {
+          const [i, serverKey] = key.split('\0')
+          this.set({ try: i, serverKey }, count)
+        }
+      }
+    })
+
+    new promClient.Gauge({
+      name: `${prefix}try_failed`,
+      help: 'The total number of failed individual request tries',
+      labelNames: ['try', 'serverKey', 'code'],
+      collect() {
+        for (const [key, count] of Object.entries(self.stats.tryFailed)) {
+          const [i, serverKey, code] = key.split('\0')
+          this.set({ try: i, serverKey, code }, count)
+        }
+      }
+    })
+
+    new promClient.Gauge({
+      name: `${prefix}try_succeeded`,
+      help: 'The total number of successful individual request tries',
+      labelNames: ['try', 'serverKey'],
+      collect() {
+        for (const [key, count] of Object.entries(self.stats.trySucceeded)) {
+          const [i, serverKey] = key.split('\0')
+          this.set({ try: i, serverKey }, count)
+        }
+      }
+    })
+  }
+}
+
+function increment(counts, keys) {
+  const key = keys.join('\0')
+  counts[key] = (counts[key] || 0) + 1
 }
 
 function pickRandom(keys) {
