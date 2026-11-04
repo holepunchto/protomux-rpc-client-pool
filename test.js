@@ -432,6 +432,7 @@ async function setupRpcServer(t, bootstrap, { msDelay = 0 } = {}) {
   const server = dht.createServer()
 
   let nrCons = 0
+  let error = null
 
   server.on('connection', (conn) => {
     if (DEBUG) {
@@ -458,6 +459,7 @@ async function setupRpcServer(t, bootstrap, { msDelay = 0 } = {}) {
             })
           })
         }
+        if (error) throw error
         return req
       }
     )
@@ -477,6 +479,9 @@ async function setupRpcServer(t, bootstrap, { msDelay = 0 } = {}) {
     setDelay: (delay) => {
       msDelay = delay
     },
+    setError: (err) => {
+      error = err
+    },
     dht
   }
 }
@@ -495,3 +500,65 @@ function getRpcClient(t, bootstrap) {
 
   return rpc
 }
+
+test('retryableCodes: retries with other key if REQUEST_ERROR cause code is in retryableCodes', async (t) => {
+  const bootstrap = await setupTestnet(t)
+  const { server: s1, setError: setError1 } = await setupRpcServer(t, bootstrap)
+  const { server: s2, setError: setError2 } = await setupRpcServer(t, bootstrap)
+  const rpcClient = getRpcClient(t, bootstrap)
+
+  const pool = new Pool([s1.publicKey, s2.publicKey], rpcClient, {
+    retryableCodes: ['CUSTOM_CODE']
+  })
+  t.teardown(() => {
+    pool.destroy()
+  })
+
+  // chosen server starts failing
+  const err = new Error('boom')
+  err.code = 'CUSTOM_CODE'
+  let choseS1 = true
+  if (b4a.equals(pool.chosenKey, s1.publicKey)) {
+    setError1(err)
+  } else {
+    choseS1 = false
+    setError2(err)
+  }
+
+  const res = await pool.makeRequest('echo', 'hi', {
+    requestEncoding: cenc.string,
+    responseEncoding: cenc.string
+  })
+  t.is(res, 'hi', 'rpc request processed successfully')
+  t.alike(pool.chosenKey, choseS1 ? s2.publicKey : s1.publicKey, 'switched to the other server')
+})
+
+test('retryableCodes: does not retry if codes are not in retryableCodes', async (t) => {
+  const bootstrap = await setupTestnet(t)
+  const { server: s1, setError: setError1 } = await setupRpcServer(t, bootstrap)
+  const { server: s2, setError: setError2 } = await setupRpcServer(t, bootstrap)
+  const rpcClient = getRpcClient(t, bootstrap)
+
+  const pool = new Pool([s1.publicKey, s2.publicKey], rpcClient, {
+    retryableCodes: ['CUSTOM_CODE']
+  })
+  t.teardown(() => {
+    pool.destroy()
+  })
+
+  const err = new Error('boom')
+  err.code = 'OTHER_CODE'
+  const initKey = pool.chosenKey
+  if (b4a.equals(initKey, s1.publicKey)) setError1(err)
+  else setError2(err)
+
+  await t.exception(
+    () =>
+      pool.makeRequest('echo', 'hi', {
+        requestEncoding: cenc.string,
+        responseEncoding: cenc.string
+      }),
+    /REQUEST_ERROR/
+  )
+  t.alike(pool.chosenKey, initKey, 'did not switch server')
+})
