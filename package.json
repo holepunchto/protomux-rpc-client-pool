@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "format": "prettier --write .",
-    "lint": "prettier --check .",
+    "lint": "prettier --check . && lunte",
     "test": "npm run lint && brittle test.js"
   },
   "files": [
@@ -32,6 +32,7 @@
     "brittle": "^3.16.3",
     "compact-encoding": "^2.16.1",
     "hyperdht": "^6.20.5",
+    "lunte": "^1.8.6",
     "prettier": "^3.7.4",
     "prettier-config-holepunch": "^2.0.0",
     "protomux-rpc": "^1.7.1",
