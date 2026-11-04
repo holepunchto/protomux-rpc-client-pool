@@ -8,7 +8,13 @@ class ProtomuxRpcClientPool {
   constructor(
     keys,
     rpcClient,
-    { totalTimeout = 10_000, retries = 3, rpcTimeout = 3_000, rateLimit = {} } = {}
+    {
+      totalTimeout = 10_000,
+      retries = 3,
+      rpcTimeout = 3_000,
+      rateLimit = {},
+      retryableCodes = []
+    } = {}
   ) {
     // TODO: ensure failover is to a random key too (for example by random-sorting the keys when passed-in)
     this.keys = keys.map(IdEnc.decode)
@@ -16,6 +22,7 @@ class ProtomuxRpcClientPool {
     this.totalTimeout = totalTimeout
     this.retries = retries
     this.rpcTimeout = rpcTimeout
+    this.retryableCodes = retryableCodes
     this.chosenKey = pickRandom(this.keys)
     this.rateLimit =
       rateLimit.capacity === -1
@@ -77,11 +84,7 @@ class ProtomuxRpcClientPool {
           increment(this.stats.tryFailed, [i, serverKey, e.code ? e.code : 'UNKNOWN'])
 
           // TODO: figure out other errors that should result in a retry
-          if (
-            e.code === 'REQUEST_TIMEOUT' ||
-            e.code === 'CHANNEL_CLOSED' ||
-            e.code === 'TIMEOUT_EXCEEDED'
-          ) {
+          if (this._isRetryable(e)) {
             if (b4a.equals(key, this.chosenKey)) {
               this.chosenKey = key = pickNext(this.keys, key)
             } else {
@@ -103,6 +106,18 @@ class ProtomuxRpcClientPool {
         clearTimeout(timer)
       }
     }
+  }
+
+  _isRetryable(e) {
+    if (
+      e.code === 'REQUEST_TIMEOUT' ||
+      e.code === 'CHANNEL_CLOSED' ||
+      e.code === 'TIMEOUT_EXCEEDED'
+    ) {
+      return true
+    }
+    if (this.retryableCodes.includes(e.code)) return true
+    return e.code === 'REQUEST_ERROR' && e.cause?.code && this.retryableCodes.includes(e.cause.code)
   }
 
   event(methodName, args, { requestEncoding } = {}) {

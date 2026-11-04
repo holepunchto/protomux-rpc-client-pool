@@ -20,6 +20,7 @@ Create a new pool. `keys` is a list of [HyperDHT](https://github.com/holepunchto
 
 - `retries` : the number of times to retry a request with a different server before giving up. Default: 3.
 - `rpcTimeout` : the default timeout for a single request attempt, in ms.
+- `retryableCodes` : additional error codes that should trigger a retry with the next server. A request is retried if `err.code` is in this list, or if `err.code === 'REQUEST_ERROR'` and `err.cause.code` is in this list. Default: `[]`.
 - `totalTimeout`: the default timeout for the entire request, in ms. This timeout operates independently of `rpcTimeout`.
 - `rateLimit`: bucket rate limit config
 - `ratelimit.capacity`: max tokens (burst capacity). Set to `-1` to disable the rate limit.
