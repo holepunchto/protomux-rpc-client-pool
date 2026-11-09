@@ -6,7 +6,8 @@
   "scripts": {
     "format": "prettier --write .",
     "lint": "prettier --check . && lunte",
-    "test": "npm run lint && brittle test.js"
+    "test": "npm run lint && brittle test.js",
+    "test:bare": "brittle-bare test.js"
   },
   "files": [
     "index.js",
